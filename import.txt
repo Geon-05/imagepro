@@ -1,0 +1,6 @@
+python=3.9
+numpy
+torch
+torchvision
+Pillow
+opencv-python
