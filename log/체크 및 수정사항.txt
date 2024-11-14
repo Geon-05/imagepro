@@ -1,0 +1,29 @@
+체크사항
+1. val구분 - ok
+
+2. 로스체크/텍스트파일 정리(다운) - ok
+500마다 출력
+-> 로스값 구글셀에 정리
+
+3. 평가산출 출력 - OK
+
+criterion_GAN = nn.MSELoss()
+criterion_pixelwise = nn.L1Loss()
+지금은 이로스를 쓰고있어 그런데 대회 리더보드 평가산식이 아래와같아. 
+이것을 고려해서 현재의 loss를 계속 써도 되는지 아니면 아래의 metric과 합쳐서 써야할지 아니면 아래의 metric만으로 validation을 해야할 지 알려줘.
+
+평가 산식: SSIM(Structural Similarity Index Measure), 색상 Histogram 유사도 [링크]
+S : 전체 SSIM 평균
+M : 손실 영역 SSIM 평균
+C : 색상 유사도 평균
+score = (0.2*S)+(0.4*M)+(0.4*C)
+
+Public Score: 전체 테스트 샘플 중 사전 샘플링된 50%
+Private Score: 전체 테스트 샘플 100%
+
+4. Attention U-Net 사용해보기 - 같은조건으로 epoch :2
+
+
+5. epoch수정
+-----------------------------------------------------------------------
+6. 모델 수정 - 배워야함!

@@ -1,0 +1,119 @@
+Attention U-Net을 구현하는 기본적인 코드를 제공해 드리겠습니다. 아래 코드는 PyTorch를 사용하여 Attention U-Net을 구현한 예시입니다. 이 모델은 U-Net의 업샘플링 단계에 주의 메커니즘을 추가하여 중요한 피처 맵에 집중하도록 설계되었습니다.
+
+python
+코드 복사
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# Attention Gate
+class AttentionBlock(nn.Module):
+    def __init__(self, F_g, F_l, F_int):
+        super(AttentionBlock, self).__init__()
+        self.W_g = nn.Sequential(
+            nn.Conv2d(F_g, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+        
+        self.W_x = nn.Sequential(
+            nn.Conv2d(F_l, F_int, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+        
+        self.psi = nn.Sequential(
+            nn.Conv2d(F_int, 1, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(1),
+            nn.Sigmoid()
+        )
+        
+        self.relu = nn.ReLU(inplace=True)
+        
+    def forward(self, g, x):
+        g1 = self.W_g(g)
+        x1 = self.W_x(x)
+        psi = self.relu(g1 + x1)
+        psi = self.psi(psi)
+        return x * psi
+
+# U-Net with Attention mechanism
+class AttentionUNet(nn.Module):
+    def __init__(self, in_channels=3, out_channels=1, base_filters=64):
+        super(AttentionUNet, self).__init__()
+        
+        # Contracting path
+        self.encoder1 = self.conv_block(in_channels, base_filters)
+        self.encoder2 = self.conv_block(base_filters, base_filters * 2)
+        self.encoder3 = self.conv_block(base_filters * 2, base_filters * 4)
+        self.encoder4 = self.conv_block(base_filters * 4, base_filters * 8)
+        
+        # Bottleneck
+        self.bottleneck = self.conv_block(base_filters * 8, base_filters * 16)
+        
+        # Expansive path
+        self.up4 = self.up_conv(base_filters * 16, base_filters * 8)
+        self.att4 = AttentionBlock(F_g=base_filters * 8, F_l=base_filters * 8, F_int=base_filters * 4)
+        self.decoder4 = self.conv_block(base_filters * 16, base_filters * 8)
+        
+        self.up3 = self.up_conv(base_filters * 8, base_filters * 4)
+        self.att3 = AttentionBlock(F_g=base_filters * 4, F_l=base_filters * 4, F_int=base_filters * 2)
+        self.decoder3 = self.conv_block(base_filters * 8, base_filters * 4)
+        
+        self.up2 = self.up_conv(base_filters * 4, base_filters * 2)
+        self.att2 = AttentionBlock(F_g=base_filters * 2, F_l=base_filters * 2, F_int=base_filters)
+        self.decoder2 = self.conv_block(base_filters * 4, base_filters * 2)
+        
+        self.up1 = self.up_conv(base_filters * 2, base_filters)
+        self.att1 = AttentionBlock(F_g=base_filters, F_l=base_filters, F_int=base_filters // 2)
+        self.decoder1 = self.conv_block(base_filters * 2, base_filters)
+        
+        # Final output
+        self.final = nn.Conv2d(base_filters, out_channels, kernel_size=1, padding=0)
+        
+    def conv_block(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+    
+    def up_conv(self, in_channels, out_channels):
+        return nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
+    
+    def forward(self, x):
+        # Contracting path
+        enc1 = self.encoder1(x)
+        enc2 = self.encoder2(F.max_pool2d(enc1, 2))
+        enc3 = self.encoder3(F.max_pool2d(enc2, 2))
+        enc4 = self.encoder4(F.max_pool2d(enc3, 2))
+        
+        # Bottleneck
+        bottleneck = self.bottleneck(F.max_pool2d(enc4, 2))
+        
+        # Expansive path with attention
+        dec4 = self.up4(bottleneck)
+        enc4 = self.att4(g=dec4, x=enc4)
+        dec4 = self.decoder4(torch.cat([dec4, enc4], dim=1))
+        
+        dec3 = self.up3(dec4)
+        enc3 = self.att3(g=dec3, x=enc3)
+        dec3 = self.decoder3(torch.cat([dec3, enc3], dim=1))
+        
+        dec2 = self.up2(dec3)
+        enc2 = self.att2(g=dec2, x=enc2)
+        dec2 = self.decoder2(torch.cat([dec2, enc2], dim=1))
+        
+        dec1 = self.up1(dec2)
+        enc1 = self.att1(g=dec1, x=enc1)
+        dec1 = self.decoder1(torch.cat([dec1, enc1], dim=1))
+        
+        return self.final(dec1)
+
+# 모델 인스턴스 생성
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = AttentionUNet(in_channels=3, out_channels=1).to(device)
+코드 설명
+AttentionBlock: 주의 메커니즘이 구현된 블록으로, U-Net의 스킵 연결에서 중요한 피처를 강조하여 정보가 더 잘 전달되도록 합니다.
+AttentionUNet 클래스: 일반적인 U-Net과 비슷한 구조이지만, 각 업샘플링 단계마다 AttentionBlock을 사용해 스킵 연결의 특징을 선택적으로 강조합니다.
