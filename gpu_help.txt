@@ -1,0 +1,4 @@
+conda create -n new_env python=3.9 -y
+conda activate new_env
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install pytorch-msssim scikit-image

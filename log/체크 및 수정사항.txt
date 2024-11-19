@@ -21,9 +21,37 @@ score = (0.2*S)+(0.4*M)+(0.4*C)
 Public Score: 전체 테스트 샘플 중 사전 샘플링된 50%
 Private Score: 전체 테스트 샘플 100%
 
-4. Attention U-Net 사용해보기 - 같은조건으로 epoch :2
+4-1 손실함수부분확인해보기!
+# 손실 함수
+def combined_loss(fake_B, real_B):
+    loss_GAN = criterion_GAN(fake_B, real_B)
+    loss_pixel = criterion_pixelwise(fake_B, real_B)
+    loss_ssim = 1 - ssim(fake_B, real_B, data_range=1.0)
+    loss_hist = histogram_similarity(fake_B, real_B)
+    return loss_GAN + lambda_pixel * loss_pixel + 0.4 * loss_ssim + 0.4 * loss_hist
+
+4-2 criterion_GAN = nn.BCELoss()  변경해보기
+4-3. Attention U-Net 사용해보기 - 같은조건으로 epoch :2
+-> epoch :2 로고정! // 변경한 모델 혹은 값들간의 비교를 위해서
 
 
 5. epoch수정
+
+
+# 1. gpt가 짜준 ssimscore랑 공모전 metric 코드랑 뭐가 다른지 비교
+
+# 2. bceloss랑 poerceptual loss 들어간 새로운 combined loss로 테스트해보기
+
+# # 편법
+# 3. 1)
+# train_sizeL 29603 
+# test: 100
+# 우리가 갖ㄱ도 있는 최고의의 모데리: 0.5
+# test=> 대충정답: 컬러사진
+
+# 2). 그다음학습 때
+# training_dataset =>   (0.8*dataset) + + test=> 대충정답: 컬러사진
+# validation_dataset: (0.2*dataset) + test=> 대충정답: 컬러사진
+
 -----------------------------------------------------------------------
 6. 모델 수정 - 배워야함!

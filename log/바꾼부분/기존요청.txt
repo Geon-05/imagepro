@@ -1,0 +1,14 @@
+# 1. gpt가 짜준 ssimscore랑 공모전 metric 코드랑 뭐가 다른지 비교
+
+# 2. bceloss랑 poerceptual loss 들어간 새로운 combined loss로 테스트해보기
+
+# # 편법
+# 3. 1)
+# train_sizeL 29603 
+# test: 100
+# 우리가 갖ㄱ도 있는 최고의의 모데리: 0.5
+# test=> 대충정답: 컬러사진
+
+# 2). 그다음학습 때
+# training_dataset =>   (0.8*dataset) + + test=> 대충정답: 컬러사진
+# validation_dataset: (0.2*dataset) + test=> 대충정답: 컬러사진

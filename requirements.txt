@@ -1,6 +1,19 @@
-python=3.9
-numpy
-torch
-torchvision
-Pillow
-opencv-python
+torchvision==0.15.1+cu118
+torchaudio==2.0.0+cu118
+tensorflow==2.13.0
+tensorflow-estimator==2.13.0
+segmentation-models-pytorch==0.3.4
+efficientnet_pytorch==0.7.1
+timm==0.9.7
+pytorch-msssim==1.0.0
+numpy==1.24.3
+scikit-image==0.24.0
+scikit-learn==1.5.2
+opencv-python==4.10.0.84
+pillow==11.0.0
+matplotlib==3.9.2
+tqdm==4.67.0
+joblib==1.4.2
+
+
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
