@@ -1,0 +1,390 @@
+대답:
+우선 업로드해주신 이미지를 통해 흑백 손상된 부분을 복원하고 색상으로 복원하는 모델을 구현하고자 하는 시도는 매우 좋습니다. 현재 제공된 코드에서 개선할 수 있는 몇 가지 중요한 사항을 말씀드리겠습니다.
+
+1. 코드 개선 사항:
+마스크 및 복원 이미지 구조:
+
+손상된 흑백 이미지를 복원할 때 model_1을 사용하여 흑백 복원을 수행하고 그다음 model_2를 사용하여 색상 복원을 하고 있습니다. 하지만 손상된 부분만 마스크를 통해 모델에 알려주는 방식이 더 효율적일 수 있습니다. 마스크를 활용해 손상된 부분만 복원하고 나머지는 그대로 두는 방식을 적용하는 것이 더 적절해 보입니다.
+데이터셋에서 마스크 적용:
+
+CustomDataset 클래스에서 손상된 부분을 마스크로 설정하고 이 마스크를 학습에 활용하고 있습니다. 하지만 __getitem__ 함수에서 이미지와 마스크의 정렬을 확실히 해주는 것이 좋습니다. 특히 이미지와 마스크가 모두 텐서 형태로 모델에 입력될 때, 손상된 영역만 복원하도록 모델 학습을 도와줍니다.
+모델 입력 채널 수정:
+
+model_1과 model_2의 입력 채널이 모두 in_channels=1로 설정되어 있으나, 실제로 images_gray_masked가 3채널로 변환된 상태로 입력될 가능성이 있습니다. 이 부분을 확인하고 입력 채널에 맞는 이미지를 전달해야 합니다.
+손상된 이미지가 흑백(1채널)인 경우 model_1의 in_channels=1로 설정하는 것이 맞지만, model_2는 3채널의 복원을 위한 모델이므로 해당 입력이 1채널이 아닌 3채널이 되어야 합니다.
+CUDA 메모리 부족 문제:
+
+업로드된 이미지 크기가 크고, GPU 메모리가 부족한 상황이 발생할 수 있습니다. 학습 중 CUDA out of memory 오류가 발생할 가능성이 큽니다. 이 문제를 해결하기 위해 배치 크기(BATCH_SIZE)를 줄이거나 이미지 크기를 조정하는 등의 조치가 필요합니다.
+모델 복원 절차:
+
+현재 두 개의 모델(model_1, model_2)을 차례로 사용하는 방식이지만, 이 모델들이 잘 동작하려면 첫 번째 모델의 출력과 두 번째 모델의 입력이 잘 매칭되는지 확인해야 합니다. 이를 위해서 손상된 부분만을 마스크로 덮고 나머지 부분은 손상되지 않은 부분을 그대로 사용하여 두 번째 모델에 입력하는 것이 바람직합니다.
+수정된 코드의 일부 예:
+python
+코드 복사
+# 모델 초기화
+model_1 = UnetPlusPlus(
+    encoder_name="efficientnet-b4",
+    encoder_weights="imagenet",
+    in_channels=1,  # Grayscale 입력
+    classes=1
+)
+
+model_2 = UnetPlusPlus(
+    encoder_name="efficientnet-b4",
+    encoder_weights="imagenet",
+    in_channels=3,  # Grayscale 복원 이후 색상 복원을 위해 3채널 사용
+    classes=3  # RGB 출력
+)
+model_2에서 in_channels=3으로 수정하여 복원된 흑백 이미지를 그대로 받아들일 수 있도록 수정해야 합니다.
+테스트 코드 추가:
+모델이 학습된 후에는 복원된 결과를 시각화하거나 저장하는 테스트 단계가 필요합니다. 업로드된 이미지를 복원하는 코드를 사용하여 모델 성능을 평가할 수 있습니다.
+python
+코드 복사
+import matplotlib.pyplot as plt
+
+# 테스트 데이터로 예측 실행
+output_dir = "output/"
+os.makedirs(output_dir, exist_ok=True)
+
+lit_ir_model.eval()  # 평가 모드로 설정
+with torch.no_grad():
+    for idx, batch in enumerate(test_dataloader):
+        inputs = batch['A'].to(device)  # 손상된 이미지
+        masks = batch['masks'].to(device)  # 손상된 부분의 마스크
+        gray_restored, color_restored = lit_ir_model(inputs)  # 모델 예측
+
+        # 예측된 이미지를 저장
+        for i, result in enumerate(color_restored):
+            result_img = (result.squeeze().cpu().numpy() * 255).astype(np.uint8)  # [0, 255]로 변환
+            result_img = np.transpose(result_img, (1, 2, 0))  # [C, H, W] -> [H, W, C]
+            output_path = os.path.join(output_dir, f"output_{idx}_{i}.png")
+            plt.imsave(output_path, result_img)
+            print(f"Saved: {output_path}")
+이러한 방식으로, 손상된 부분이 제대로 복원되는지, 복원된 이미지를 색상으로 잘 복원하는지를 확인할 수 있습니다. 이미지 복원이 잘 되려면 손상된 부분의 정보를 모델이 제대로 학습하고 복원해야 하므로, 데이터셋 내 손상된 부분의 마스크 정보를 충분히 활용하는 것이 중요합니다.
+
+이외에 추가적으로 궁금한 사항이 있으시면 언제든지 말씀해주세요!
+
+
+
+질문:
+
+흑백으로 일부분이 손상된 사진을 복원하는 모델을 만들고있어 계획은 흑백사진의 손상된부분을 마스크로 정의하고 해당부분을 흑백복원한뒤 색상복원이 이뤄지도록 하기위해 모델을 2개사용하고있는데 아래의 코드를 확인하고 적절한 코드인지 개선해야하는 부분이있는지 확인해줘
+
+import random
+import numpy as np
+import os
+
+import torch
+from PIL import Image
+import torchvision.transforms as transforms
+from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
+import torch.optim as optim
+import cv2
+
+import zipfile
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+
+CFG = {
+    'EPOCHS':2,
+    'LEARNING_RATE':3e-4,
+    # 'BATCH_SIZE':16,
+    'BATCH_SIZE':8,
+    'SEED':42
+}
+
+def seed_everything(seed):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True  # 결정론적 연산 보장
+    torch.backends.cudnn.benchmark = False     # 성능 최적화 대신 일관성 우선
+
+seed_everything(CFG['SEED'])  # Seed 고정
+
+def get_input_image(damage_img_path, origin_img_path):
+    # OpenCV로 이미지 읽기 (NumPy 배열로 읽음)
+    color_image = cv2.imread(origin_img_path)
+    gray_image = cv2.imread(damage_img_path, cv2.IMREAD_GRAYSCALE)  # 흑백 이미지로 읽기
+    
+    # 색상 이미지를 흑백으로 변환 (PIL로 변환 후 NumPy로 변환)
+    color_image_gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
+    
+    # 두 이미지의 차이 계산
+    difference = cv2.absdiff(color_image_gray, gray_image)
+    
+    # 차이 값을 임계값으로 처리하여 이진화 이미지 생성
+    _, binary_difference = cv2.threshold(difference, 1, 255, cv2.THRESH_BINARY)
+
+    # 마스크 생성
+    mask = binary_difference > 0  # 차이가 있는 부분을 마스크로 설정
+    mask = Image.fromarray(mask.astype(np.uint8) * 255)  # 마스크 이미지를 PIL 형식으로 변환
+
+    return {
+        'image_gray_masked': Image.fromarray(gray_image),  # 손상된 이미지를 PIL 이미지로 반환
+        'mask': transforms.ToTensor()(mask)  # 마스크를 텐서로 변환하여 사용
+    }
+
+class CustomDataset(Dataset):
+    def __init__(self, damage_dir, origin_dir, transform=None, use_masks=True):
+        self.damage_dir = damage_dir
+        self.origin_dir = origin_dir
+        self.transform = transform
+        self.use_masks = use_masks
+        self.damage_files = sorted(os.listdir(damage_dir), key=lambda x: x.lower())
+        self.origin_files = sorted(os.listdir(origin_dir), key=lambda x: x.lower())
+
+    def __len__(self):
+        return len(self.damage_files)
+
+    def __getitem__(self, idx):
+        damage_img_name = self.damage_files[idx]
+        origin_img_name = self.origin_files[idx]
+
+        damage_img_path = os.path.join(self.damage_dir, damage_img_name)
+        origin_img_path = os.path.join(self.origin_dir, origin_img_name)
+
+        damage_img = Image.open(damage_img_path).convert("RGB")
+        origin_img = Image.open(origin_img_path).convert("RGB")
+
+        if self.use_masks:
+            input_data = get_input_image(damage_img_path, origin_img_path)
+            mask = input_data['mask']
+            # mask가 이미 텐서인지 확인하고 변환 처리
+            if not isinstance(mask, torch.Tensor):
+                mask = transforms.ToTensor()(mask)
+        else:
+            mask = torch.zeros((1, damage_img.size[1], damage_img.size[0]))
+
+        if self.transform:
+            damage_img = self.transform(damage_img)
+            origin_img = self.transform(origin_img)
+
+        return {'A': damage_img, 'B': origin_img, 'mask': mask}
+
+from segmentation_models_pytorch import UnetPlusPlus
+import torch.nn.functional as F
+import lightning as L
+from skimage.metrics import structural_similarity as ssim
+import cv2
+import numpy as np
+import torch
+
+# 히스토그램 유사도 계산 함수
+def get_histogram_similarity(true_np, pred_np, color_space=cv2.COLOR_RGB2HSV):
+    true_hsv = cv2.cvtColor(true_np.astype(np.uint8), color_space)
+    pred_hsv = cv2.cvtColor(pred_np.astype(np.uint8), color_space)
+    
+    hist_true = cv2.calcHist([true_hsv], [0], None, [180], [0, 180])
+    hist_pred = cv2.calcHist([pred_hsv], [0], None, [180], [0, 180])
+    
+    hist_true = cv2.normalize(hist_true, hist_true).flatten()
+    hist_pred = cv2.normalize(hist_pred, hist_pred).flatten()
+    
+    similarity = cv2.compareHist(hist_true, hist_pred, cv2.HISTCMP_CORREL)
+    return similarity
+
+# 마스크된 부분만 SSIM 계산
+def get_masked_ssim_score(true_np, pred_np, mask_np):
+    if mask_np.ndim == 3 and mask_np.shape[0] == 1:
+        mask_np = mask_np.squeeze(0)
+    elif mask_np.ndim == 3 and mask_np.shape[-1] == 1:
+        mask_np = mask_np.squeeze(-1)
+    
+    if true_np.shape[:2] != mask_np.shape:
+        mask_np = cv2.resize(mask_np, (true_np.shape[1], true_np.shape[0]), interpolation=cv2.INTER_NEAREST)
+    
+    true_masked = true_np[mask_np > 0]
+    pred_masked = pred_np[mask_np > 0]
+
+    if true_masked.size == 0 or pred_masked.size == 0:
+        return 0
+
+    ssim_value = ssim(
+        true_masked, pred_masked, data_range=pred_masked.max() - pred_masked.min(), channel_axis=-1
+    )
+    return ssim_value
+
+# SSIM 계산 함수
+def get_ssim_score(true_np, pred_np):
+    ssim_value = ssim(
+        true_np, pred_np, channel_axis=-1, data_range=pred_np.max() - pred_np.min()
+    )
+    if np.isnan(ssim_value):
+        ssim_value = 0
+    return ssim_value
+
+# Lightning Module 정의
+class LitIRModel(L.LightningModule):
+    def __init__(self, model_1, model_2, image_mean=0.5, image_std=0.5):
+        super().__init__()
+        self.model_1 = model_1
+        self.model_2 = model_2
+        self.image_mean = image_mean
+        self.image_std = image_std
+
+    def forward(self, images_gray_masked):
+        images_gray_restored = self.model_1(images_gray_masked) + images_gray_masked
+        images_restored = self.model_2(images_gray_restored)
+        return images_gray_restored, images_restored
+
+    def configure_optimizers(self):
+        opt = torch.optim.AdamW(self.parameters(), lr=1e-5)
+        return opt
+
+    def training_step(self, batch, batch_idx):
+        images_gray_masked = torch.mean(batch['A'], dim=1, keepdim=True)  # 손상된 이미지를 흑백으로 변환
+        images_gt = batch['B']  # Ground Truth 이미지
+
+        # 모델에 입력
+        images_gray_restored, images_restored = self(images_gray_masked)
+    
+        # 손실 계산
+        loss_pixel_gray = (
+            F.l1_loss(images_gray_masked, images_gray_restored, reduction='mean') * 0.5 +
+            F.mse_loss(images_gray_masked, images_gray_restored, reduction='mean') * 0.5
+        )
+        loss_pixel = (
+            F.l1_loss(images_gt, images_restored, reduction='mean') * 0.5 +
+            F.mse_loss(images_gt, images_restored, reduction='mean') * 0.5
+        )
+        loss = loss_pixel_gray * 0.5 + loss_pixel * 0.5
+
+        # 로깅 (Batch와 손실 값 출력)
+        print(f"Batch {batch_idx}, Loss: {loss.item()}")
+        self.log("train_loss", loss, on_step=True, on_epoch=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        images_gray_masked = torch.mean(batch['A'], dim=1, keepdim=True)  # 손상된 이미지를 흑백으로 변환
+        images_gt = batch['B']  # Ground Truth 이미지
+
+        images_gray_restored, images_restored = self(images_gray_masked)
+
+        # Ground Truth와 복원된 이미지 크기 맞추기
+        if images_restored.shape != images_gt.shape:
+            images_restored = torch.nn.functional.interpolate(
+                images_restored, size=images_gt.shape[-2:], mode="bilinear", align_corners=False
+            )
+
+        # NumPy 변환
+        images_restored_np = images_restored.detach().cpu().permute(0, 2, 3, 1).numpy()
+        images_gt_np = images_gt.detach().cpu().permute(0, 2, 3, 1).numpy()
+
+        # SSIM 및 기타 메트릭 계산
+        total_ssim_score = get_ssim_score(images_gt_np[0], images_restored_np[0])
+        self.log("val_ssim", total_ssim_score, on_step=False, on_epoch=True)
+        return {"val_ssim": total_ssim_score}
+
+# 모델 초기화
+model_1 = UnetPlusPlus(
+    encoder_name="efficientnet-b4",
+    encoder_weights="imagenet",
+    in_channels=1,  # Grayscale 입력
+    classes=1
+)
+
+model_2 = UnetPlusPlus(
+    encoder_name="efficientnet-b4",
+    encoder_weights="imagenet",
+    in_channels=1,  # Grayscale 입력
+    classes=3  # RGB 출력
+)
+
+lit_ir_model = LitIRModel(model_1=model_1, model_2=model_2)
+
+from torch.utils.data import random_split, DataLoader
+import torchvision.transforms as transforms
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
+import lightning as L
+import os
+import torch
+
+torch.set_float32_matmul_precision('high')
+
+# 경로 설정
+origin_dir = 'train_gt'
+damage_dir = 'train_input'
+test_dir = 'test_input'
+
+# 데이터 전처리 설정
+transform = transforms.Compose([
+    transforms.Resize((512, 512)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.5], [0.5])
+])
+
+# 데이터셋 생성
+dataset = CustomDataset(damage_dir=damage_dir, origin_dir=origin_dir, transform=transform)
+
+# 데이터셋 분할
+validation_ratio = 0.2
+train_size = int((1 - validation_ratio) * len(dataset))
+val_size = len(dataset) - train_size
+training_dataset, validation_dataset = random_split(dataset, [train_size, val_size])
+
+class CollateFn:
+    def __init__(self, mode='train'):
+        self.mode = mode
+
+    def __call__(self, batch):
+        A = torch.stack([item['A'] for item in batch])
+        B = torch.stack([item['B'] for item in batch])
+        masks = torch.stack([item['mask'] for item in batch]) if 'mask' in batch[0] else torch.zeros_like(A)
+
+        if self.mode in ['train', 'valid']:
+            return {'A': A, 'B': B, 'masks': masks}
+        elif self.mode == 'test':
+            return {'A': A}
+
+# CollateFn 정의
+train_collate_fn = CollateFn(mode='train')
+validation_collate_fn = CollateFn(mode='valid')
+
+# DataLoader 설정
+train_dataloader = DataLoader(
+    training_dataset,
+    batch_size=CFG['BATCH_SIZE'],
+    shuffle=True,
+    num_workers=8,
+    pin_memory=True,
+    collate_fn=train_collate_fn
+)
+
+validation_dataloader = DataLoader(
+    validation_dataset,
+    batch_size=CFG['BATCH_SIZE'],
+    shuffle=False,
+    num_workers=8,
+    collate_fn=validation_collate_fn
+)
+
+# 모델 저장 디렉토리 생성
+model_save_dir = "./saved_models"
+os.makedirs(model_save_dir, exist_ok=True)
+
+# Trainer 설정 및 학습 시작
+trainer = L.Trainer(
+    max_epochs=CFG['EPOCHS'],
+    precision='16-mixed',
+    accelerator='gpu',
+    devices=1,
+    log_every_n_steps=10,
+    callbacks=[
+        ModelCheckpoint(
+            monitor='val_ssim',
+            mode='max',
+            save_top_k=10 ,
+            dirpath=model_save_dir,
+            filename='best_model-{epoch:02d}-{val_ssim:.4f}'
+        ),
+        EarlyStopping(monitor='val_ssim', mode='max', patience=3)
+    ]
+)
+
+# 학습 시작
+trainer.fit(lit_ir_model, train_dataloader, validation_dataloader)
